@@ -1,0 +1,32 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+env/
+
+# Django
+*.log
+staticfiles/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# React / Node
+node_modules/
+dist/
+.vite/
+
+# Editors and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local databases and backups
+*.sqlite3
+adaptive_learning_backup.sql
