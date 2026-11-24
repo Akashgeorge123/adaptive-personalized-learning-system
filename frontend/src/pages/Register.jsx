@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../services/api";
+import { Eye, EyeOff } from "lucide-react";
 
 function Register() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ function Register() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   function handleChange(e) {
     setFormData({
@@ -89,16 +91,26 @@ function Register() {
             className="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-700"
           />
 
+        <div className="relative">
           <input
-            type="password"
+            type={showPassword ? "text" : "password"}
             name="password"
             placeholder="Password (minimum 8 characters)"
             value={formData.password}
             onChange={handleChange}
             minLength={8}
             required
-            className="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-700"
+            className="w-full p-3 pr-12 rounded-lg bg-slate-800 text-white border border-slate-700"
           />
+
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+          >
+            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
+        </div>
 
           <textarea
             name="interests"

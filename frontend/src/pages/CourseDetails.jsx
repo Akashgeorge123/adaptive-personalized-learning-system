@@ -338,10 +338,12 @@ function CourseDetails() {
                   </div>
 
                   <button
-                    onClick={() => navigate("/assessments")}
+                    onClick={() =>
+                      navigate(`/courses/${courseId}/assessments/${assessment.assessment_id}`)
+                    }
                     className="w-full mt-5 bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-lg transition"
                   >
-                    View Assessments
+                    Start Assessment
                   </button>
 
                 </div>

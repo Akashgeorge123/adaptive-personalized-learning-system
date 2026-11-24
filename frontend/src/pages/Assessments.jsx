@@ -1,6 +1,6 @@
-
+import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { ClipboardCheck, CheckCircle, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import api from "../services/api";
 import {
     ResponsiveContainer,
@@ -12,20 +12,14 @@ import {
 } from "recharts";
 
 function Assessments() {
+  const navigate = useNavigate();
   const [assessments, setAssessments] = useState([]);
-  const [questions, setQuestions] = useState([]);
-  const [options, setOptions] = useState([]);
   const [results, setResults] = useState([]);
   const [courses, setCourses] = useState([]);
   const [review, setReview] = useState(null);
   const [reviewLoading, setReviewLoading] = useState(false);
 
-  const [selectedAssessment, setSelectedAssessment] = useState(null);
-  const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [result, setResult] = useState(null);
-
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -33,21 +27,15 @@ function Assessments() {
       try {
         const [
           assessmentRes, 
-          questionRes, 
-          optionRes,
           resultRes,
           courseRes
         ] = await Promise.all([
             api.get("assessments/"),
-            api.get("questions/"),
-            api.get("answer-options/"),
             api.get("results/"),
             api.get("courses/")
           ]);
 
         setAssessments(assessmentRes.data);
-        setQuestions(questionRes.data);
-        setOptions(optionRes.data);
         setResults(resultRes.data);
         setCourses(courseRes.data);
       } catch (err) {
@@ -61,61 +49,13 @@ function Assessments() {
     fetchData();
   }, []);
 
-  const currentQuestions = selectedAssessment
-    ? questions.filter(
-        (question) =>
-          Number(question.assessment) ===
-          Number(selectedAssessment.assessment_id)
-      )
-    : [];
+  
 
-  const handleSelectAssessment = (assessment) => {
-    setSelectedAssessment(assessment);
-    setSelectedAnswers({});
-    setResult(null);
-    setReview(null);
-    setError("");
-};
+  
 
-  const handleAnswerSelect = (questionId, optionId) => {
-    setSelectedAnswers((previous) => ({
-      ...previous,
-      [questionId]: optionId
-    }));
-  };
 
-  const handleSubmit = async () => {
-    if (Object.keys(selectedAnswers).length !== currentQuestions.length) {
-      setError("Please answer every question before submitting.");
-      return;
-    }
 
-    const answers = Object.values(selectedAnswers);
-
-    
-
-    try {
-      setSubmitting(true);
-      setError("");
-
-      const response = await api.post("assessments/submit/", {
-        assessment: selectedAssessment.assessment_id,
-        answers: answers
-      });
-
-      setResult(response.data);
-
-      const updatedResults = await api.get("results/");
-      setResults(updatedResults.data);
-    } catch (err) {
-      setError(
-        err.response?.data?.error ||
-        "Unable to submit assessment. Please try again."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  
 
 const handleReview = async (resultId) => {
     try {
@@ -254,6 +194,83 @@ console.log("Course Performance:", coursePerformance);
     </div>
 
 </div>
+
+
+<div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-8">
+
+    <h2 className="text-xl font-semibold mb-2">
+        Available Assessments
+    </h2>
+
+    <p className="text-sm text-slate-400 mb-6">
+        Test your knowledge and evaluate your understanding.
+    </p>
+
+    {assessments.length === 0 ? (
+        <p className="text-slate-400">
+            No assessments available.
+        </p>
+    ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+            {assessments.map((assessment) => {
+
+                const course = courses.find(
+                    (item) =>
+                        Number(item.course_id) ===
+                        Number(assessment.course)
+                );
+
+                return (
+                    <div
+                        key={assessment.assessment_id}
+                        className="bg-slate-800/70 border border-slate-700 rounded-xl p-5"
+                    >
+
+                        <div className="flex justify-between items-start gap-3">
+
+                            <div>
+                                <h3 className="font-semibold text-lg">
+                                    {assessment.title}
+                                </h3>
+
+                                <p className="text-sm text-slate-400 mt-1">
+                                    {course?.title || "Course"}
+                                </p>
+                            </div>
+
+                            <span className="text-xs bg-indigo-500/20 text-indigo-300 px-3 py-1 rounded-full">
+                                {assessment.assessment_type || "Assessment"}
+                            </span>
+
+                        </div>
+
+                        <div className="flex items-center gap-5 mt-5 text-sm text-slate-400">
+                            <span>
+                                Total Marks: {assessment.total_marks}
+                            </span>
+                        </div>
+
+                        <button
+                            onClick={() =>
+                                navigate(
+                                    `/courses/${assessment.course}/assessments/${assessment.assessment_id}`
+                                )
+                            }
+                            className="w-full mt-5 bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-lg font-medium transition"
+                        >
+                            Start Assessment
+                        </button>
+
+                    </div>
+                );
+            })}
+
+        </div>
+    )}
+
+</div>
+
 
 <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-8">
 
@@ -566,168 +583,7 @@ console.log("Course Performance:", coursePerformance);
         </div>
       )}
 
-      {!selectedAssessment ? (
-        <div>
-          <h2 className="text-xl font-semibold mb-5">
-            Available Assessments
-          </h2>
-
-          <div className="grid md:grid-cols-2 gap-5">
-            {assessments.map((assessment) => (
-              <div
-                key={assessment.assessment_id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-6"
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="bg-indigo-500/10 p-3 rounded-lg">
-                    <ClipboardCheck className="text-indigo-400" />
-                  </div>
-
-                  <span className="text-sm text-indigo-400 uppercase">
-                    {assessment.type}
-                  </span>
-                </div>
-
-                <h3 className="text-lg font-semibold">
-                  {assessment.title}
-                </h3>
-
-                <p className="text-slate-400 text-sm mt-2">
-                  Total marks: {assessment.total_marks}
-                </p>
-
-                <button
-                  onClick={() => handleSelectAssessment(assessment)}
-                  className="mt-5 w-full bg-indigo-600 hover:bg-indigo-700 py-2.5 rounded-lg font-medium"
-                >
-                  Start Assessment
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {assessments.length === 0 && (
-            <p className="text-slate-400">
-              No assessments are currently available.
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-
-          <button
-            onClick={() => handleSelectAssessment(null)}
-            className="text-indigo-400 hover:text-indigo-300 mb-6"
-          >
-            ← Back to assessments
-          </button>
-
-          <h2 className="text-2xl font-bold">
-            {selectedAssessment.title}
-          </h2>
-
-          <p className="text-slate-400 mt-2 mb-8">
-            Total marks: {selectedAssessment.total_marks}
-            {" "} | {" "}
-            Questions: {currentQuestions.length}
-          </p>
-
-          {currentQuestions.map((question, index) => {
-            const questionOptions = options.filter(
-              (option) =>
-                Number(option.question) ===
-                Number(question.question_id)
-            );
-
-            return (
-              <div
-                key={question.question_id}
-                className="border-b border-slate-800 py-6 last:border-0"
-              >
-                <div className="flex justify-between gap-4 mb-4">
-                  <h3 className="font-semibold">
-                    {index + 1}. {question.question_text}
-                  </h3>
-
-                  <span className="text-sm text-slate-400 whitespace-nowrap">
-                    {question.marks} marks
-                  </span>
-                </div>
-
-                <div className="space-y-3">
-                  {questionOptions.map((option) => (
-                    <label
-                      key={option.option_id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${
-                        selectedAnswers[question.question_id] === option.option_id
-                          ? "border-indigo-500 bg-indigo-500/10"
-                          : "border-slate-700 hover:border-slate-500"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name={`question-${question.question_id}`}
-                        value={option.option_id}
-                        checked={
-                          selectedAnswers[question.question_id] ===
-                          option.option_id
-                        }
-                        onChange={() =>
-                          handleAnswerSelect(
-                            question.question_id,
-                            option.option_id
-                          )
-                        }
-                        disabled={!!result}
-                        className="accent-indigo-500"
-                      />
-
-                      <span>{option.option_text}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-
-          {!result ? (
-            <button
-              onClick={handleSubmit}
-              disabled={submitting || currentQuestions.length === 0}
-              className="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 py-3 rounded-lg font-semibold"
-            >
-              {submitting ? "Submitting..." : "Submit Assessment"}
-            </button>
-          ) : (
-            <div className="mt-8 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6">
-              <div className="flex items-center gap-3 text-emerald-400 mb-3">
-                <CheckCircle size={24} />
-                <h3 className="text-xl font-bold">
-                  Assessment Submitted!
-                </h3>
-              </div>
-
-              <p className="text-slate-300">
-                Your score:{" "}
-                <span className="font-bold text-white">
-                  {result.score} / {selectedAssessment.total_marks}
-                </span>
-              </p>
-
-              <p className="text-slate-400 text-sm mt-2">
-                Result ID: {result.result_id}
-              </p>
-
-              <button
-                onClick={() => handleSelectAssessment(null)}
-                className="mt-5 bg-slate-700 hover:bg-slate-600 px-5 py-2 rounded-lg"
-              >
-                Back to Assessments
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      
     </div>
   );
 }

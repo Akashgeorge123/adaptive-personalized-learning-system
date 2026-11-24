@@ -9,4 +9,7 @@ urlpatterns = [
     path('profile/', views.student_profile, name='student-profile'),
     path('admin-login/', views.admin_login, name='admin-login'),
     path('admin-profile/', views.admin_profile, name='admin-profile'),
+    path('admin/students/', views.admin_students_list, name='admin-students-list'),
+    path('forgot-password/', views.forgot_password, name='forgot-password'),
+    path('reset-password/', views.reset_password, name='reset-password'),
 ]

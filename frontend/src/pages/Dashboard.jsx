@@ -157,6 +157,49 @@ function Dashboard() {
 
   const student = dashboard.student;
 
+  // Overall learning path progress
+const completedTopics = dashboard.progress.filter(
+    (item) => item.completion_status === "completed"
+).length;
+
+const totalTopics = dashboard.progress.length;
+
+const overallProgress = totalTopics > 0
+    ? (completedTopics / totalTopics) * 100
+    : 0;
+
+
+// Course-wise learning path progress
+const courseProgress = Object.values(
+    dashboard.progress.reduce((groups, item) => {
+
+        const id = item.course_id;
+
+        if (!groups[id]) {
+            groups[id] = {
+                course_id: id,
+                course_title: item.course_title,
+                total: 0,
+                completed: 0
+            };
+        }
+
+        groups[id].total += 1;
+
+        if (item.completion_status === "completed") {
+            groups[id].completed += 1;
+        }
+
+        return groups;
+
+    }, {})
+).map((course) => ({
+    ...course,
+    percentage: course.total > 0
+        ? (course.completed / course.total) * 100
+        : 0
+}));
+
   
 
   return (
@@ -176,6 +219,33 @@ function Dashboard() {
             Continue your personalised learning journey.
           </p>
         </section>
+
+        {/* Student Profile */}
+<section className="mb-10">
+  <SectionTitle
+    icon={<GraduationCap />}
+    title="Student Profile"
+  />
+
+  <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+
+    <div>
+      <p className="text-slate-400 text-sm">Full Name</p>
+      <p className="font-semibold mt-2">{student.name}</p>
+    </div>
+
+    <div>
+      <p className="text-slate-400 text-sm">Email Address</p>
+      <p className="font-semibold mt-2 break-all">{student.email}</p>
+    </div>
+
+    <div>
+      <p className="text-slate-400 text-sm">Student ID</p>
+      <p className="font-semibold mt-2">#{student.student_id}</p>
+    </div>
+
+  </div>
+</section>
 
         {/* Statistics */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
@@ -199,6 +269,76 @@ function Dashboard() {
             />
 
         </section>
+
+        {/* Learning Progress */}
+<section className="mb-10">
+  <SectionTitle
+    icon={<ChartNoAxesColumnIncreasing />}
+    title="Learning Progress"
+  />
+
+  <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+
+    {/* Overall Progress */}
+    <div className="mb-8">
+      <div className="flex justify-between mb-3">
+        <h3 className="font-semibold">Overall Learning Path Progress</h3>
+
+        <span className="text-indigo-400 font-semibold">
+          {Math.round(overallProgress)}%
+        </span>
+      </div>
+
+      <div className="w-full bg-slate-800 rounded-full h-3">
+        <div
+          className="bg-indigo-500 h-3 rounded-full transition-all"
+          style={{ width: `${overallProgress}%` }}
+        />
+      </div>
+
+      <p className="text-slate-400 text-sm mt-2">
+        {completedTopics} of {totalTopics} learning path topics completed
+      </p>
+    </div>
+
+    {/* Course-wise Progress */}
+    <h3 className="font-semibold mb-5">Course-wise Progress</h3>
+
+    {courseProgress.length > 0 ? (
+      <div className="space-y-6">
+        {courseProgress.map((course) => (
+          <div key={course.course_id}>
+            <div className="flex justify-between mb-2">
+              <span className="text-slate-300">
+                {course.course_title}
+              </span>
+
+              <span className="text-indigo-400 text-sm">
+                {Math.round(course.percentage)}%
+              </span>
+            </div>
+
+            <div className="w-full bg-slate-800 rounded-full h-2">
+              <div
+                className="bg-indigo-500 h-2 rounded-full transition-all"
+                style={{ width: `${course.percentage}%` }}
+              />
+            </div>
+
+            <p className="text-slate-500 text-xs mt-2">
+              {course.completed} of {course.total} topics completed
+            </p>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p className="text-slate-400">
+        No learning progress available yet. Generate a learning path to get started.
+      </p>
+    )}
+
+  </div>
+</section>
 
         {/* Courses */}
         <section className="mb-10">
@@ -281,67 +421,69 @@ function Dashboard() {
           </div>
         </section>
 
-        {/* Assessment Results */}
-        <section className="mb-10">
-          <SectionTitle
-            icon={<ChartNoAxesColumnIncreasing />}
-            title="Assessment Results"
-          />
+        {/* Recent Activity */}
+<section className="mb-10">
+  <SectionTitle
+    icon={<ClipboardCheck />}
+    title="Recent Activity"
+  />
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            {dashboard.assessment_results.length > 0 ? (
-              dashboard.assessment_results.map((result) => {
-                const assessment = assessments.find(
-                  (item) =>
-                    Number(item.assessment_id) === Number(result.assessment)
-                );
+  <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
 
-                return (
-                  <div
-                    key={result.result_id}
-                    className="flex justify-between items-center border-b border-slate-800 py-3 last:border-0"
-                  >
-                    <span>
-                      {assessment?.title || `Assessment #${result.assessment}`}
-                    </span>
+    {dashboard.assessment_results.length > 0 ? (
+      [...dashboard.assessment_results]
+        .sort((a, b) => {
+          if (!a.attempted_at) return 1;
+          if (!b.attempted_at) return -1;
 
-                    <span className="text-indigo-400 font-semibold">
-                      {result.score}
-                    </span>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="text-slate-400">
-                No assessment results yet.
-              </p>
-            )}
-          </div>
-        </section>
+          return new Date(b.attempted_at) - new Date(a.attempted_at);
+        })
+        .slice(0, 5)
+        .map((result) => {
+          const assessment = assessments.find(
+            (item) =>
+              Number(item.assessment_id) === Number(result.assessment)
+          );
 
-        {/* Featured Learning Videos */}
-        <section className="mb-10">
-          <SectionTitle
-            icon={<PlayCircle />}
-            title="Featured Learning Videos"
-          />
+          return (
+            <div
+              key={result.result_id}
+              className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 border-b border-slate-800 py-4 last:border-0"
+            >
+              <div>
+                <h3 className="font-semibold">
+                  {assessment?.title || `Assessment #${result.assessment}`}
+                </h3>
 
-          {featuredVideos.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {featuredVideos.map(({ resource, courseName }) => (
-                <FeaturedVideo
-                  key={resource.resource_id}
-                  resource={resource}
-                  courseName={courseName}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-slate-400 bg-slate-900 p-5 rounded-lg">
-              No featured videos available yet.
+                <p className="text-slate-400 text-sm mt-1">
+                  {result.attempted_at
+                    ? new Date(result.attempted_at).toLocaleString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true
+                 }) : "Date unavailable"}
             </p>
-          )}
-        </section>
+              </div>
+
+              <span className="text-indigo-400 font-semibold">
+                Score: {result.score}
+              </span>
+            </div>
+          );
+        })
+    ) : (
+      <p className="text-slate-400">
+        No recent activity available.
+      </p>
+    )}
+
+  </div>
+</section>
+
+
 
       </main>
     </div>

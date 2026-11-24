@@ -303,32 +303,7 @@ function Recommendations() {
       </section>
 
 
-      {/* Featured Learning Videos */}
-
-      <section>
-        <div className="flex items-center gap-3 mb-5">
-          <PlayCircle className="text-indigo-400" size={25} />
-          <h2 className="text-xl font-semibold">
-            Featured Learning Videos
-          </h2>
-        </div>
-
-        {featuredVideos.length > 0 ? (
-          <div className="grid md:grid-cols-2 gap-5">
-            {featuredVideos.map(({ resource, courseName }) => (
-              <FeaturedVideo
-                key={resource.resource_id}
-                resource={resource}
-                courseName={courseName}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="text-slate-400 bg-slate-900 p-5 rounded-lg">
-            No embedded videos available yet.
-          </p>
-        )}
-      </section>
+      
 
     </div>
   );

@@ -191,3 +191,83 @@ def enrollment_list(request):
         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
     )
 
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+def admin_course_detail(request, course_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response({"error": "Admin authentication required"}, status=401)
+
+    try:
+        course = Course.objects.get(
+            course_id=course_id,
+            admin=admin
+        )
+    except Course.DoesNotExist:
+        return Response({"error": "Course not found"}, status=404)
+
+    if request.method == 'GET':
+        serializer = CourseSerializer(course)
+        return Response(serializer.data)
+
+    elif request.method in ['PUT', 'PATCH']:
+        serializer = CourseSerializer(
+            course,
+            data=request.data,
+            partial=(request.method == 'PATCH')
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "message": "Course updated successfully",
+                "course": serializer.data
+            })
+
+        return Response(serializer.errors, status=400)
+
+    elif request.method == 'DELETE':
+        from .models import (
+            Topic,
+            StudentCourseEnrollment
+        )
+        from assessments.models import Assessment
+
+        has_topics = Topic.objects.filter(course=course).exists()
+        has_assessments = Assessment.objects.filter(course=course).exists()
+        has_enrollments = StudentCourseEnrollment.objects.filter(
+            course=course
+        ).exists()
+
+        if has_topics or has_assessments or has_enrollments:
+            return Response(
+                {
+                    "error": "This course cannot be deleted because it contains topics, assessments or student enrollments.",
+                    "suggestion": "Remove dependent records first or archive the course."
+                },
+                status=400
+            )
+
+        course.delete()
+
+        return Response(
+            {"message": "Course deleted successfully"},
+            status=200
+        )
+
+@api_view(['GET'])
+def admin_course_list(request):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response({"error": "Admin authentication required"}, status=401)
+
+    courses = Course.objects.filter(admin=admin)
+    serializer = CourseSerializer(courses, many=True)
+
+    return Response(serializer.data)

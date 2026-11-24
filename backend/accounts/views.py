@@ -4,6 +4,10 @@ from django.contrib.auth.hashers import check_password
 from .serializers import StudentSerializer,StudentRegistrationSerializer
 from .models import Student,Admin
 from django.core import signing
+from django.contrib.auth.hashers import make_password
+from django.core.mail import send_mail
+from django.conf import settings
+from django.urls import reverse
 
 
 def get_student_from_token(request):
@@ -237,3 +241,124 @@ def admin_profile(request):
             'email' : admin.email
         }
     )
+
+
+@api_view(['POST'])
+def forgot_password(request):
+    email = request.data.get('email', '').strip().lower()
+
+    if not email:
+        return Response(
+            {'error': 'Email is required'},
+            status=400
+        )
+
+    try:
+        student = Student.objects.get(email__iexact=email)
+    except Student.DoesNotExist:
+        # Avoid revealing whether an email is registered.
+        return Response({
+            'message': 'If the email is registered, a reset link will be sent.'
+        })
+
+    token = signing.dumps(
+        {
+            'student_id': student.student_id,
+            'password': student.password
+        },
+        salt='student-password-reset'
+    )
+
+    reset_url = (
+        f'http://localhost:5173/reset-password?token={token}'
+    )
+
+    send_mail(
+        subject='Password Reset Request',
+        message=(
+            f'Hello {student.name},\n\n'
+            f'Click the link below to reset your password:\n\n'
+            f'{reset_url}\n\n'
+            'This link expires in 15 minutes.\n'
+            'If you did not request this, ignore this email.'
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[student.email],
+        fail_silently=False
+    )
+
+    return Response({
+        'message': 'If the email is registered, a reset link will be sent.'
+    })
+
+
+@api_view(['POST'])
+def reset_password(request):
+    token = request.data.get('token')
+    new_password = request.data.get('password')
+
+    if not token or not new_password:
+        return Response(
+            {'error': 'Token and new password are required'},
+            status=400
+        )
+
+    if len(new_password) < 8:
+        return Response(
+            {'error': 'Password must contain at least 8 characters'},
+            status=400
+        )
+
+    try:
+        data = signing.loads(
+            token,
+            salt='student-password-reset',
+            max_age=900
+        )
+
+        student = Student.objects.get(
+            student_id=data['student_id']
+        )
+
+        # Reject old links after the password has changed.
+        if student.password != data['password']:
+            return Response(
+                {'error': 'This reset link is invalid or expired'},
+                status=400
+            )
+
+        student.password = make_password(new_password)
+        student.save(update_fields=['password'])
+
+        return Response({
+            'message': 'Password reset successfully'
+        })
+
+    except (
+        signing.SignatureExpired,
+        signing.BadSignature,
+        Student.DoesNotExist,
+        KeyError
+    ):
+        return Response(
+            {'error': 'This reset link is invalid or expired'},
+            status=400
+        )
+
+@api_view(['GET'])
+def admin_students_list(request):
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Unauthorized"},
+            status=401
+        )
+
+    students = Student.objects.all().values(
+        'student_id',
+        'name',
+        'email'
+    )
+
+    return Response(list(students))

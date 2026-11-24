@@ -9,4 +9,6 @@ urlpatterns = [
     path('topics/create/',views.topic_create, name='topic-create'),
     path('resources/create/',views.resource_create, name='resources-create'),
     path('enrollments/', views.enrollment_list, name='enrollment-list'),
+    path('admin/courses/', views.admin_course_list, name='admin-course-list'),
+    path('admin/courses/<int:course_id>/', views.admin_course_detail, name='admin-course-detail'),
 ]

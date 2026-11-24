@@ -34,6 +34,11 @@ class StudentProgressSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    course_id = serializers.IntegerField(
+            source = 'item.topic.course.course_id',
+            read_only = True
+        )
+
     path_title = serializers.CharField(
         source='item.path.title',
         read_only=True

@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BookOpen, Search, Layers, CheckCircle } from "lucide-react";
 import api from "../services/api";
 
@@ -13,6 +14,7 @@ function Courses() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const navigate = useNavigate();
 
   useEffect(() => {
     async function fetchCourses() {
@@ -209,6 +211,15 @@ function Courses() {
                   {selectedCourse === course.course_id
                     ? "Hide Topics"
                     : "Explore Topics"}
+                </button>
+
+                {/* Open Course Button */}
+                
+                <button
+                  onClick={() => navigate(`/courses/${course.course_id}`)}
+                  className="w-full mt-3 bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-lg font-medium transition"
+                >
+                  Open Course
                 </button>
 
                 {selectedCourse === course.course_id && (
