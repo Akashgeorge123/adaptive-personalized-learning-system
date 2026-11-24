@@ -12,6 +12,7 @@ class TopicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Topic
         fields = '__all__'
+        read_only_fields = ['topic_id']
 
 class LearningResourceSerializer(serializers.ModelSerializer):
     class Meta:

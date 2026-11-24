@@ -271,3 +271,205 @@ def admin_course_list(request):
     serializer = CourseSerializer(courses, many=True)
 
     return Response(serializer.data)
+
+@api_view(['GET'])
+def admin_topic_list(request):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    topics = Topic.objects.filter(
+        course__admin=admin
+    ).select_related('course')
+
+    serializer = TopicSerializer(topics, many=True)
+
+    return Response(serializer.data)
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+def admin_topic_detail(request, topic_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    try:
+        topic = Topic.objects.get(
+            topic_id=topic_id,
+            course__admin=admin
+        )
+    except Topic.DoesNotExist:
+        return Response(
+            {"error": "Topic not found"},
+            status=404
+        )
+
+    if request.method == 'GET':
+        serializer = TopicSerializer(topic)
+        return Response(serializer.data)
+
+    elif request.method in ['PUT', 'PATCH']:
+        serializer = TopicSerializer(
+            topic,
+            data=request.data,
+            partial=(request.method == 'PATCH')
+        )
+
+        if serializer.is_valid():
+            course = serializer.validated_data.get(
+                'course', topic.course
+            )
+
+            if course.admin_id != admin.admin_id:
+                return Response(
+                    {"error": "You cannot move a topic to another admin's course"},
+                    status=403
+                )
+
+            serializer.save()
+
+            return Response({
+                "message": "Topic updated successfully",
+                "topic": serializer.data
+            })
+
+        return Response(serializer.errors, status=400)
+
+    elif request.method == 'DELETE':
+        from assessments.models import Question
+        from learning.models import LearningPathItem
+
+        has_resources = LearningResource.objects.filter(
+            topic=topic
+        ).exists()
+
+        has_questions = Question.objects.filter(
+            topic=topic
+        ).exists()
+
+        has_learning_path_items = LearningPathItem.objects.filter(
+            topic=topic
+        ).exists()
+
+        if has_resources or has_questions or has_learning_path_items:
+            return Response(
+                {
+                    "error": "This topic cannot be deleted because it is used by learning resources, assessment questions or learning paths.",
+                    "suggestion": "Remove dependent records first."
+                },
+                status=400
+            )
+
+        topic.delete()
+
+        return Response(
+            {"message": "Topic deleted successfully"},
+            status=200
+        )
+
+
+@api_view(['GET'])
+def admin_resource_list(request):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    resources = LearningResource.objects.filter(
+        topic__course__admin=admin
+    ).select_related('topic', 'topic__course')
+
+    serializer = LearningResourceSerializer(resources, many=True)
+
+    return Response(serializer.data)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+def admin_resource_detail(request, resource_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    try:
+        resource = LearningResource.objects.get(
+            resource_id=resource_id,
+            topic__course__admin=admin
+        )
+    except LearningResource.DoesNotExist:
+        return Response(
+            {"error": "Resource not found"},
+            status=404
+        )
+
+    if request.method == 'GET':
+        serializer = LearningResourceSerializer(resource)
+        return Response(serializer.data)
+
+    elif request.method in ['PUT', 'PATCH']:
+        serializer = LearningResourceSerializer(
+            resource,
+            data=request.data,
+            partial=(request.method == 'PATCH')
+        )
+
+        if serializer.is_valid():
+            topic = serializer.validated_data.get(
+                'topic', resource.topic
+            )
+
+            if topic.course.admin_id != admin.admin_id:
+                return Response(
+                    {"error": "You cannot move a resource to another admin's course"},
+                    status=403
+                )
+
+            serializer.save()
+
+            return Response({
+                "message": "Resource updated successfully",
+                "resource": serializer.data
+            })
+
+        return Response(serializer.errors, status=400)
+
+    elif request.method == 'DELETE':
+        from learning.models import StudentVideoProgress
+
+        has_video_progress = StudentVideoProgress.objects.filter(
+            resource=resource
+        ).exists()
+
+        if has_video_progress:
+            return Response({
+                "error": "This resource cannot be deleted because students have video progress records linked to it.",
+                "suggestion": "Keep the resource to preserve student learning progress."
+            }, status=400)
+
+        resource.delete()
+
+        return Response(
+            {"message": "Resource deleted successfully"},
+            status=200
+        )

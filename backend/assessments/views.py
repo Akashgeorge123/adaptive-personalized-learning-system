@@ -8,33 +8,86 @@ from .serializers import (
     AssessmentResultSerializer,
     StudentAnswerOptionSerializer
     )
+from courses.models import Topic
 from accounts.views import get_student_from_token
+from django.db import transaction
 from django.utils import timezone
+from decimal import Decimal, InvalidOperation
 
 @api_view(['GET'])
 def assessment_list(request):
-    assessments = Assessment.objects.all()
+
+    student = get_student_from_token(request)
+
+    if not student:
+        return Response(
+            {"error": "Authentication required"},
+            status=401
+        )
+
+    assessments = Assessment.objects.filter(
+        course__studentcourseenrollment__student=student,
+        course__studentcourseenrollment__status='active'
+    ).distinct()
+
     serializer = AssessmentSerializer(assessments, many=True)
+
     return Response(serializer.data)
 
 @api_view(['GET'])
 def question_list(request):
+
+    student = get_student_from_token(request)
+
+    if not student:
+        return Response(
+            {"error": "Authentication required"},
+            status=401
+        )
+
     assessment_id = request.query_params.get('assessment')
 
-    if assessment_id:
-        questions = Question.objects.filter(
-            assessment_id = assessment_id
+    if assessment_id and not assessment_id.isdigit():
+        return Response(
+            {"error": "Invalid assessment ID"},
+            status=400
         )
-    else:
-        questions = Question.objects.all()
+
+    questions = Question.objects.filter(
+        assessment__course__studentcourseenrollment__student=student,
+        assessment__course__studentcourseenrollment__status='active'
+    ).distinct()
+
+    if assessment_id:
+        questions = questions.filter(
+            assessment_id=int(assessment_id)
+        )
 
     serializer = QuestionSerializer(questions, many=True)
+
     return Response(serializer.data)
 
 @api_view(['GET'])
 def answer_option_list(request):
-    options = AnswerOption.objects.all()
-    serializer = StudentAnswerOptionSerializer(options, many=True)
+
+    student = get_student_from_token(request)
+
+    if not student:
+        return Response(
+            {"error": "Authentication required"},
+            status=401
+        )
+
+    options = AnswerOption.objects.filter(
+        question__assessment__course__studentcourseenrollment__student=student,
+        question__assessment__course__studentcourseenrollment__status='active'
+    ).distinct()
+
+    serializer = StudentAnswerOptionSerializer(
+        options,
+        many=True
+    )
+
     return Response(serializer.data)
 
 @api_view(['GET'])
@@ -72,7 +125,9 @@ def assessment_review(request, result_id):
         )
 
     try:
-        result = AssessmentResult.objects.get(
+        result = AssessmentResult.objects.select_related(
+            'assessment'
+        ).get(
             result_id=result_id,
             student=student
         )
@@ -89,24 +144,24 @@ def assessment_review(request, result_id):
         'selected_option'
     )
 
+    correct_options = {
+        option.question_id: option.option_text
+        for option in AnswerOption.objects.filter(
+            question__assessment=result.assessment,
+            is_correct=True
+        )
+    }
+
     review_data = []
 
     for answer in answers:
-
-        correct_option = AnswerOption.objects.filter(
-            question=answer.question,
-            is_correct=True
-        ).first()
 
         review_data.append({
             'question_id': answer.question.question_id,
             'question_text': answer.question.question_text,
             'marks': str(answer.question.marks),
             'selected_option': answer.selected_option.option_text,
-            'correct_option': (
-                correct_option.option_text
-                if correct_option else None
-            ),
+            'correct_option': correct_options.get(answer.question_id),
             'is_correct': answer.is_correct
         })
 
@@ -185,6 +240,16 @@ def question_create(request):
                 },
                 status=403
             )
+        topic = serializer.validated_data['topic']
+
+        if topic.course_id != assessment.course_id:
+            return Response(
+                {
+                    "error": "The selected topic must belong to the assessment's course"
+                },
+                status=400
+            )
+        
         question = serializer.save()
 
         return Response(
@@ -253,11 +318,32 @@ def submit_assessment(request):
     assessment_id = request.data.get('assessment')
     answers = request.data.get('answers')
 
-    if not assessment_id or not isinstance(answers, list) or not answers:
+    if (
+        not isinstance(assessment_id, (int, str))
+        or isinstance(assessment_id, bool)
+        or not str(assessment_id).isdigit()
+    ):
+        return Response(
+            {"error": "Invalid assessment ID"},
+            status=400
+        )
+
+    if not isinstance(answers, list) or not answers:
         return Response(
             {"error": "Assessment and answers are required"},
             status=400
         )
+
+    if not all(
+        isinstance(answer, (int, str)) and not isinstance(answer, bool) and str(answer).isdigit()
+        for answer in answers
+    ):
+        return Response(
+            {"error": "Invalid answer format"},
+            status=400
+        )
+
+    answers = [int(answer) for answer in answers]
 
     if len(answers) != len(set(answers)):
         return Response(
@@ -267,11 +353,13 @@ def submit_assessment(request):
 
     try:
         assessment = Assessment.objects.get(
-            assessment_id=assessment_id
+            assessment_id=assessment_id,
+            course__studentcourseenrollment__student=student,
+            course__studentcourseenrollment__status='active'
         )
     except Assessment.DoesNotExist:
         return Response(
-            {"error": "Assessment not found"},
+            {"error": "Assessment not found or you are not enrolled in its course"},
             status=404
         )
 
@@ -325,8 +413,6 @@ def submit_assessment(request):
         if selected_option.is_correct:
             score += question.marks
 
-    from django.db import transaction
-    from django.utils import timezone
 
     with transaction.atomic():
 
@@ -362,3 +448,339 @@ def submit_assessment(request):
         "score": str(score),
         "total_marks": str(assessment.total_marks)
     })
+
+
+@api_view(['GET'])
+def admin_assessment_list(request):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    assessments = Assessment.objects.filter(
+        course__admin=admin
+    ).select_related('course')
+
+    serializer = AssessmentSerializer(assessments, many=True)
+
+    return Response(serializer.data)
+
+
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+def admin_assessment_detail(request, assessment_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    try:
+        assessment = Assessment.objects.get(
+            assessment_id=assessment_id,
+            course__admin=admin
+        )
+    except Assessment.DoesNotExist:
+        return Response(
+            {"error": "Assessment not found"},
+            status=404
+        )
+
+    if request.method == 'GET':
+        serializer = AssessmentSerializer(assessment)
+        return Response(serializer.data)
+
+    elif request.method in ['PUT', 'PATCH']:
+        serializer = AssessmentSerializer(
+            assessment,
+            data=request.data,
+            partial=request.method == 'PATCH'
+        )
+
+        if serializer.is_valid():
+            course = serializer.validated_data.get(
+                'course',
+                assessment.course
+            )
+
+            if course.admin_id != admin.admin_id:
+                return Response(
+                    {"error": "You cannot assign an assessment to another admin's course"},
+                    status=403
+                )
+
+            serializer.save()
+
+            return Response({
+                "message": "Assessment updated successfully",
+                "assessment": serializer.data
+            })
+
+        return Response(serializer.errors, status=400)
+
+    elif request.method == 'DELETE':
+
+        has_results = AssessmentResult.objects.filter(
+            assessment=assessment
+        ).exists()
+
+        has_questions = Question.objects.filter(
+            assessment=assessment
+        ).exists()
+
+        if has_results or has_questions:
+            return Response(
+                {
+                    "error": "Cannot delete this assessment because it has questions or student results."
+                },
+                status=400
+            )
+
+        assessment.delete()
+
+        return Response({
+            "message": "Assessment deleted successfully"
+        })
+
+@api_view(['GET'])
+def admin_question_list(request, assessment_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    try:
+        assessment = Assessment.objects.get(
+            assessment_id=assessment_id,
+            course__admin=admin
+        )
+    except Assessment.DoesNotExist:
+        return Response(
+            {"error": "Assessment not found"},
+            status=404
+        )
+
+    questions = Question.objects.filter(
+        assessment=assessment
+    ).select_related('topic')
+
+    serializer = QuestionSerializer(questions, many=True)
+
+    return Response(serializer.data)
+
+@api_view(['GET'])
+def admin_answer_option_list(request, question_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    try:
+        question = Question.objects.get(
+            question_id=question_id,
+            assessment__course__admin=admin
+        )
+    except Question.DoesNotExist:
+        return Response(
+            {"error": "Question not found"},
+            status=404
+        )
+
+    options = AnswerOption.objects.filter(
+        question=question
+    )
+
+    serializer = AnswerOptionSerializer(options, many=True)
+
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+def admin_create_question(request):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    # Get submitted data
+    assessment_id = request.data.get('assessment')
+    topic_id = request.data.get('topic')
+    question_text = request.data.get('question_text')
+    marks_value = request.data.get('marks')
+    difficulty = request.data.get('difficulty')
+    options = request.data.get('options')
+
+    # Validate required fields
+    if not all([
+        assessment_id,
+        topic_id,
+        question_text,
+        marks_value,
+        difficulty
+    ]):
+        return Response(
+            {"error": "All question fields are required"},
+            status=400
+        )
+
+    if not isinstance(question_text, str) or not question_text.strip():
+        return Response(
+            {"error": "Question text cannot be empty"},
+            status=400
+        )
+
+    # Validate marks
+    try:
+        marks = Decimal(str(marks_value))
+
+        if not marks.is_finite() or marks <= 0:
+            raise ValueError
+
+    except (InvalidOperation, ValueError):
+        return Response(
+            {"error": "Marks must be a valid positive number"},
+            status=400
+        )
+
+    # Validate difficulty
+    if difficulty not in ['easy', 'medium', 'hard']:
+        return Response(
+            {"error": "Invalid difficulty"},
+            status=400
+        )
+
+    # Validate options
+    if not isinstance(options, list) or len(options) != 4:
+        return Response(
+            {"error": "Exactly four answer options are required"},
+            status=400
+        )
+
+    if any(not isinstance(option, dict) for option in options):
+        return Response(
+            {"error": "Invalid answer option format"},
+            status=400
+        )
+
+    option_texts = []
+
+    for option in options:
+        text = option.get('option_text')
+        is_correct = option.get('is_correct')
+
+        if not isinstance(text, str) or not text.strip():
+            return Response(
+                {"error": "All four options must have text"},
+                status=400
+            )
+
+        if not isinstance(is_correct, bool):
+            return Response(
+                {"error": "Invalid correct-answer selection"},
+                status=400
+            )
+
+        option_texts.append(text.strip())
+
+    if len(set(text.lower() for text in option_texts)) != 4:
+        return Response(
+            {"error": "Answer options must be different"},
+            status=400
+        )
+
+    if sum(option['is_correct'] for option in options) != 1:
+        return Response(
+            {"error": "Exactly one option must be correct"},
+            status=400
+        )
+
+    try:
+        assessment = Assessment.objects.get(
+            assessment_id=assessment_id,
+            course__admin=admin
+        )
+
+        topic = Topic.objects.get(
+            topic_id=topic_id,
+            course_id=assessment.course_id
+        )
+
+        # Check total question marks
+        existing_marks = sum(
+            Question.objects.filter(
+                assessment=assessment
+            ).values_list('marks', flat=True),
+            Decimal('0')
+        )
+
+        if existing_marks + marks > assessment.total_marks:
+            return Response(
+                {"error": "Question marks exceed the assessment's total marks"},
+                status=400
+            )
+
+        # Save question and options together
+        with transaction.atomic():
+
+            question = Question.objects.create(
+                assessment=assessment,
+                topic=topic,
+                question_text=question_text.strip(),
+                marks=marks,
+                difficulty=difficulty
+            )
+
+            created_options = []
+
+            for option in options:
+                created_options.append(
+                    AnswerOption.objects.create(
+                        question=question,
+                        option_text=option['option_text'].strip(),
+                        is_correct=option['is_correct']
+                    )
+                )
+
+        return Response({
+            "message": "Question created successfully",
+            "question_id": question.question_id,
+            "options": AnswerOptionSerializer(
+                created_options,
+                many=True
+            ).data
+        }, status=201)
+
+    except Assessment.DoesNotExist:
+        return Response(
+            {"error": "Assessment not found or access denied"},
+            status=404
+        )
+
+    except Topic.DoesNotExist:
+        return Response(
+            {"error": "Topic does not belong to this assessment's course"},
+            status=400
+        )

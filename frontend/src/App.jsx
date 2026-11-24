@@ -24,6 +24,9 @@ import AdminLogin from "./pages/AdminLogin";
 import AdminLayout from "./components/AdminLayout";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminCourses from "./pages/AdminCourses";
+import AdminTopics from "./pages/AdminTopics";
+import AdminResources from "./pages/AdminResources";
+import AdminAssessments from "./pages/AdminAssessments";
 
 function App() {
   return (
@@ -50,6 +53,9 @@ function App() {
         >
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="courses" element={<AdminCourses />} />
+          <Route path="topics" element={<AdminTopics />}/>
+          <Route path="resources" element={<AdminResources />}/>
+          <Route path="assessments" element={<AdminAssessments />}/>
         </Route>
 
         <Route
