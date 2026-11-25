@@ -100,30 +100,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-if os.getenv("DATABASE_URL"):
-    import dj_database_url
 
-    DATABASES = {
-        "default": dj_database_url.parse(
-            os.environ["DATABASE_URL"],
-            conn_max_age=600,
-            ssl_require=True,
-        )
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ["DB_NAME"],
+        "USER": os.environ["DB_USER"],
+        "PASSWORD": os.environ["DB_PASSWORD"],
+        "HOST": os.environ["DB_HOST"],
+        "PORT": os.environ["DB_PORT"],
+        "OPTIONS": {
+            "sslmode": "disable",
+        },
     }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ["DB_NAME"],
-            "USER": os.environ["DB_USER"],
-            "PASSWORD": os.environ["DB_PASSWORD"],
-            "HOST": os.environ["DB_HOST"],
-            "PORT": os.environ["DB_PORT"],
-            "OPTIONS": {
-                "sslmode": os.getenv("DB_SSLMODE", "prefer"),
-            },
-        }
-    }
+}
+
 
 
 # Password validation
