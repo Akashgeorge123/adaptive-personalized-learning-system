@@ -8,6 +8,7 @@ from django.contrib.auth.hashers import make_password
 from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
+from django.db import transaction, IntegrityError
 
 
 def get_student_from_token(request):
@@ -362,3 +363,94 @@ def admin_students_list(request):
     )
 
     return Response(list(students))
+
+
+@api_view(['DELETE'])
+def admin_delete_student(request, student_id):
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    # Import related models
+    from courses.models import StudentCourseEnrollment
+    from learning.models import (
+        LearningPath,
+        LearningPathItem,
+        StudentProgress,
+        StudentVideoProgress
+    )
+    from assessments.models import AssessmentResult
+    from recommendations.models import Recommendation
+
+    try:
+        with transaction.atomic():
+
+            student = Student.objects.select_for_update().get(
+                student_id=student_id
+            )
+
+            # Preserve academic history
+            if AssessmentResult.objects.filter(student=student).exists():
+                return Response(
+                    {
+                        "error": (
+                            "This student cannot be deleted because "
+                            "assessment results exist."
+                        )
+                    },
+                    status=409
+                )
+
+            # Delete student-owned learning data
+            StudentProgress.objects.filter(
+                student=student
+            ).delete()
+
+            StudentVideoProgress.objects.filter(
+                student=student
+            ).delete()
+
+            Recommendation.objects.filter(
+                student=student
+            ).delete()
+
+            StudentCourseEnrollment.objects.filter(
+                student=student
+            ).delete()
+
+            # Delete learning paths and their items
+            LearningPathItem.objects.filter(
+                path__student=student
+            ).delete()
+
+            LearningPath.objects.filter(
+                student=student
+            ).delete()
+
+            # Finally delete the student
+            student.delete()
+
+        return Response({
+            "message": "Student deleted successfully"
+        })
+
+    except Student.DoesNotExist:
+        return Response(
+            {"error": "Student not found"},
+            status=404
+        )
+
+    except IntegrityError:
+        return Response(
+            {
+                "error": (
+                    "Student cannot be deleted because "
+                    "other records depend on this account."
+                )
+            },
+            status=409
+        )

@@ -784,3 +784,230 @@ def admin_create_question(request):
             {"error": "Topic does not belong to this assessment's course"},
             status=400
         )
+
+
+@api_view(['PUT'])
+def admin_update_question(request, question_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error": "Admin authentication required"},
+            status=401
+        )
+
+    try:
+        question = Question.objects.select_related(
+            'assessment'
+        ).get(
+            question_id=question_id,
+            assessment__course__admin=admin
+        )
+    except Question.DoesNotExist:
+        return Response(
+            {"error": "Question not found"},
+            status=404
+        )
+
+    # Protect submitted assessment history
+    if AssessmentResult.objects.filter(
+        assessment=question.assessment
+    ).exists():
+        return Response(
+            {"error": "Questions cannot be edited after students have attempted this assessment"},
+            status=400
+        )
+
+    topic_id = request.data.get('topic')
+    question_text = request.data.get('question_text')
+    marks_value = request.data.get('marks')
+    difficulty = request.data.get('difficulty')
+    options = request.data.get('options')
+
+    if not all([
+        topic_id,
+        question_text,
+        marks_value,
+        difficulty
+    ]):
+        return Response(
+            {"error": "All question fields are required"},
+            status=400
+        )
+
+    if not isinstance(question_text, str) or not question_text.strip():
+        return Response(
+            {"error": "Question text cannot be empty"},
+            status=400
+        )
+
+    # Validate marks
+    try:
+        marks = Decimal(str(marks_value))
+
+        if not marks.is_finite() or marks <= 0:
+            raise ValueError
+
+    except (InvalidOperation, ValueError):
+        return Response(
+            {"error": "Marks must be a valid positive number"},
+            status=400
+        )
+
+    # Validate difficulty
+    if difficulty not in ['easy', 'medium', 'hard']:
+        return Response(
+            {"error": "Invalid difficulty"},
+            status=400
+        )
+
+    # Validate options
+    if not isinstance(options, list) or len(options) != 4:
+        return Response(
+            {"error": "Exactly four answer options are required"},
+            status=400
+        )
+
+    if any(not isinstance(option, dict) for option in options):
+        return Response(
+            {"error": "Invalid answer option format"},
+            status=400
+        )
+
+    option_texts = []
+
+    for option in options:
+        text = option.get('option_text')
+        is_correct = option.get('is_correct')
+
+        if not isinstance(text, str) or not text.strip():
+            return Response(
+                {"error": "All four options must have text"},
+                status=400
+            )
+
+        if not isinstance(is_correct, bool):
+            return Response(
+                {"error": "Invalid correct-answer selection"},
+                status=400
+            )
+
+        option_texts.append(text.strip())
+
+    if len(set(text.lower() for text in option_texts)) != 4:
+        return Response(
+            {"error": "Answer options must be different"},
+            status=400
+        )
+
+    if sum(option['is_correct'] for option in options) != 1:
+        return Response(
+            {"error": "Exactly one option must be correct"},
+            status=400
+        )
+
+    # Validate topic belongs to the same course
+    try:
+        topic = Topic.objects.get(
+            topic_id=topic_id,
+            course_id=question.assessment.course_id
+        )
+    except Topic.DoesNotExist:
+        return Response(
+            {"error": "Topic does not belong to this assessment's course"},
+            status=400
+        )
+
+    # Check total question marks
+    existing_marks = sum(
+        Question.objects.filter(
+            assessment=question.assessment
+        ).exclude(
+            question_id=question.question_id
+        ).values_list('marks', flat=True),
+        Decimal('0')
+    )
+
+    if existing_marks + marks > question.assessment.total_marks:
+        return Response(
+            {"error": "Question marks exceed the assessment's total marks"},
+            status=400
+        )
+
+    # Update question and options together
+    with transaction.atomic():
+        question.topic = topic
+        question.question_text = question_text.strip()
+        question.marks = marks
+        question.difficulty = difficulty
+        question.save()
+
+        AnswerOption.objects.filter(
+            question=question
+        ).delete()
+
+        updated_options = []
+
+        for option in options:
+            updated_options.append(
+                AnswerOption.objects.create(
+                    question=question,
+                    option_text=option['option_text'].strip(),
+                    is_correct=option['is_correct']
+                )
+            )
+
+    return Response({
+        "message": "Question updated successfully",
+        "question_id": question.question_id,
+        "options": AnswerOptionSerializer(
+            updated_options,
+            many=True
+        ).data
+    })
+
+
+@api_view(['DELETE'])
+def admin_delete_question(request, question_id):
+    from accounts.views import get_admin_from_token
+
+    admin = get_admin_from_token(request)
+
+    if not admin:
+        return Response(
+            {"error" : "Admin authentication required"},
+            status=401
+        )
+
+    try:
+        question = Question.objects.get(
+            question_id = question_id,
+            assessment__course__admin = admin
+        )
+    except Question.DoesNotExist:
+        return Response(
+            {"error" : "Question not found"},
+            status=404
+        )
+
+    # Protect submitted assessment history
+    if AssessmentResult.objects.filter(
+        assessment = question.assessment
+    ).exists():
+        return Response(
+            {"error" : "Questions cannot be deleted after students have attempted this assessment"},
+            status=400
+        )
+
+    with transaction.atomic():
+        AnswerOption.objects.filter(
+            question = question
+        ).delete()
+
+        question.delete()
+
+    return Response(
+        {"message" : "Question deleted successfully"}
+    )

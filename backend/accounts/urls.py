@@ -12,4 +12,5 @@ urlpatterns = [
     path('admin/students/', views.admin_students_list, name='admin-students-list'),
     path('forgot-password/', views.forgot_password, name='forgot-password'),
     path('reset-password/', views.reset_password, name='reset-password'),
+    path('admin/students/<int:student_id>/delete/', views.admin_delete_student, name='admin-delete-student' ),
 ]

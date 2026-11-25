@@ -16,4 +16,6 @@ urlpatterns = [
     path( 'admin/assessments/<int:assessment_id>/questions/', views.admin_question_list, name='admin-question-list' ),
     path( 'admin/questions/<int:question_id>/options/', views.admin_answer_option_list, name='admin-answer-option-list' ),
     path( 'admin/questions/create/', views.admin_create_question, name='admin-create-question' ),
+    path( 'admin/questions/<int:question_id>/update/', views.admin_update_question, name='admin-update-question' ),
+    path( 'admin/questions/<int:question_id>/delete/', views.admin_delete_question, name='admin-delete-question' ),
 ]
