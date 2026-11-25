@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
     Plus, Search, Pencil, Trash2, ClipboardList, X,
-    BookOpen, FileQuestion, ChevronDown, CheckCircle2
+    BookOpen, FileQuestion, CheckCircle2
 } from "lucide-react";
 import adminApi from "../services/adminApi";
 
@@ -25,6 +25,7 @@ function AdminAssessments() {
     const [questionError, setQuestionError] = useState("");
     const [questionSuccess, setQuestionSuccess] = useState("");
     const [savingQuestion, setSavingQuestion] = useState(false);
+    const [editingQuestionId, setEditingQuestionId] = useState(null);
 
     const [questionData, setQuestionData] = useState({
         topic: "",
@@ -207,6 +208,7 @@ function AdminAssessments() {
 }
 
 function openQuestionForm() {
+    setEditingQuestionId(null);
     setQuestionData({
         topic: "",
         question_text: "",
@@ -251,6 +253,69 @@ function selectCorrectOption(index) {
         }))
     );
 }
+
+async function handleEditQuestion(question) {
+    setQuestionError("");
+    setQuestionSuccess("");
+
+    try {
+        const response = await adminApi.get(
+            `admin/questions/${question.question_id}/options/`
+        );
+
+        setQuestionData({
+            topic: String(question.topic),
+            question_text: question.question_text,
+            marks: String(question.marks),
+            difficulty: question.difficulty
+        });
+
+        setOptions(
+            response.data.map(option => ({
+                option_text: option.option_text,
+                is_correct: option.is_correct
+            }))
+        );
+
+        setEditingQuestionId(question.question_id);
+        setShowQuestionForm(true);
+
+    } catch (err) {
+        setQuestionError("Failed to load question details.");
+    }
+}
+
+async function handleDeleteQuestion(question) {
+    const confirmed = window.confirm(
+        "Are you sure you want to delete this question?"
+    );
+
+    if (!confirmed) return;
+
+    setQuestionError("");
+    setQuestionSuccess("");
+
+    try {
+        await adminApi.delete(
+            `admin/questions/${question.question_id}/delete/`
+        );
+
+        setQuestionSuccess("Question deleted successfully.");
+
+        const response = await adminApi.get(
+            `admin/assessments/${selectedAssessment.assessment_id}/questions/`
+        );
+
+        setQuestions(response.data);
+
+    } catch (err) {
+        setQuestionError(
+            err.response?.data?.error ||
+            "Failed to delete question."
+        );
+    }
+}
+
 
 async function handleQuestionSubmit(e) {
     e.preventDefault();
@@ -297,23 +362,36 @@ async function handleQuestionSubmit(e) {
     try {
         setSavingQuestion(true);
 
-        await adminApi.post(
-            "admin/questions/create/",
-            {
-                assessment: selectedAssessment.assessment_id,
-                topic: Number(questionData.topic),
-                question_text: questionData.question_text.trim(),
-                marks: marks,
-                difficulty: questionData.difficulty,
-                options: options.map(option => ({
-                    option_text: option.option_text.trim(),
-                    is_correct: option.is_correct
-                }))
-            }
-        );
+        const payload = {
+            assessment: selectedAssessment.assessment_id,
+            topic: Number(questionData.topic),
+            question_text: questionData.question_text.trim(),
+            marks: marks,
+            difficulty: questionData.difficulty,
+            options: options.map(option => ({
+                option_text: option.option_text.trim(),
+                is_correct: option.is_correct
+            }))
+        };
 
-        setQuestionSuccess("Question created successfully.");
+        if (editingQuestionId) {
+            await adminApi.put(
+                `admin/questions/${editingQuestionId}/update/`,
+                payload
+            );
+
+            setQuestionSuccess("Question updated successfully.");
+        } else {
+            await adminApi.post(
+                "admin/questions/create/",
+                payload
+            );
+
+            setQuestionSuccess("Question created successfully.");
+        }
+
         setShowQuestionForm(false);
+        setEditingQuestionId(null);
 
         const questionResponse = await adminApi.get(
             `admin/assessments/${selectedAssessment.assessment_id}/questions/`
@@ -324,12 +402,15 @@ async function handleQuestionSubmit(e) {
     } catch (err) {
         setQuestionError(
             err.response?.data?.error ||
-            "Failed to create question."
+            "Failed to save question."
         );
     } finally {
         setSavingQuestion(false);
     }
 }
+
+
+
 
     const filteredAssessments = assessments.filter(assessment => {
         const course = courses.find(
@@ -668,7 +749,7 @@ async function handleQuestionSubmit(e) {
             >
 
                 <h3 className="text-lg font-semibold text-white">
-                    Create New Question
+                    {editingQuestionId ? "Edit Question" : "Create New Question"}
                 </h3>
 
                 <div>
@@ -811,12 +892,19 @@ async function handleQuestionSubmit(e) {
                         disabled={savingQuestion}
                         className="bg-indigo-600 text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                     >
-                        {savingQuestion ? "Saving..." : "Save Question"}
+                       {savingQuestion
+                                ? "Saving..."
+                                : editingQuestionId
+                                    ? "Update Question"
+                                    : "Save Question"}
                     </button>
 
                     <button
                         type="button"
-                        onClick={() => setShowQuestionForm(false)}
+                        onClick={() => {
+                                    setShowQuestionForm(false);
+                                    setEditingQuestionId(null);
+                                }}
                         className="border border-slate-700 text-slate-300 px-5 py-2.5 rounded-lg"
                     >
                         Cancel
@@ -850,6 +938,8 @@ async function handleQuestionSubmit(e) {
                         key={question.question_id}
                         question={question}
                         index={index}
+                        onEdit={handleEditQuestion}
+                        onDelete={handleDeleteQuestion}
                     />
                 ))}
 
@@ -906,7 +996,7 @@ async function handleQuestionSubmit(e) {
     );
 }
 
-function QuestionCard({ question, index }) {
+function QuestionCard({ question, index, onEdit, onDelete  }) {
     const [options, setOptions] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -933,13 +1023,33 @@ function QuestionCard({ question, index }) {
 
             <div className="flex justify-between gap-3 mb-3">
 
-                <h3 className="font-semibold text-white">
-                    Q{index + 1}. {question.question_text}
-                </h3>
+    <h3 className="font-semibold text-white">
+        Q{index + 1}. {question.question_text}
+    </h3>
 
-                <span className="text-xs text-indigo-300 shrink-0">
-                    {question.marks} marks
-                </span>
+    <div className="flex items-center gap-3 shrink-0">
+
+                    <span className="text-xs text-indigo-300">
+                        {question.marks} marks
+                    </span>
+
+                    <button
+                        onClick={() => onEdit(question)}
+                        className="text-indigo-400 hover:text-indigo-300"
+                        title="Edit question"
+                    >
+                        <Pencil size={17} />
+                    </button>
+
+                    <button
+                        onClick={() => onDelete(question)}
+                        className="text-red-400 hover:text-red-300"
+                        title="Delete question"
+                    >
+                        <Trash2 size={17} />
+                    </button>
+
+                </div>
 
             </div>
 

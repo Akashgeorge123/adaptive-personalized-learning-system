@@ -30,3 +30,5 @@ Thumbs.db
 # Local databases and backups
 *.sqlite3
 adaptive_learning_backup.sql
+
+*.pyc

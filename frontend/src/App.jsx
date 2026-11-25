@@ -27,6 +27,7 @@ import AdminCourses from "./pages/AdminCourses";
 import AdminTopics from "./pages/AdminTopics";
 import AdminResources from "./pages/AdminResources";
 import AdminAssessments from "./pages/AdminAssessments";
+import AdminStudents from "./pages/AdminStudents";
 
 function App() {
   return (
@@ -56,6 +57,7 @@ function App() {
           <Route path="topics" element={<AdminTopics />}/>
           <Route path="resources" element={<AdminResources />}/>
           <Route path="assessments" element={<AdminAssessments />}/>
+          <Route path="students" element={<AdminStudents />}/>
         </Route>
 
         <Route
